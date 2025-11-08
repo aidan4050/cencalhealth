@@ -1,0 +1,127 @@
+(function () {
+  // 1) Ensure a mobile viewport
+  let vp = document.querySelector('meta[name="viewport"]');
+  if (!vp) {
+    vp = document.createElement('meta');
+    vp.name = 'viewport';
+    vp.content = 'width=device-width, initial-scale=1';
+    document.head.appendChild(vp);
+  } else {
+    vp.setAttribute('content', 'width=device-width, initial-scale=1');
+  }
+  // 2) Remove the inline desktop lock on <body>
+  if (document.body) {
+    document.body.style.minWidth = '';
+    document.body.style.maxWidth = '';
+    document.body.style.overflowX = 'hidden';
+  }
+  // 3) Inject hard overrides to beat the site CSS
+  const css = `
+    /* kill fixed desktop widths globally */
+    html, body {
+      min-width: 0 !important;
+      max-width: 100% !important;
+      overflow-x: hidden !important;
+    }
+    .container, .container-fluid, .container-fluid-main-page {
+      min-width: 0 !important;
+      max-width: 100% !important;
+      width: 100% !important;
+      margin-right: auto !important;
+      margin-left: auto !important;
+    }
+    /* hero/banner should shrink instead of overflow */
+    .bgstripe, .infoWindow {
+      height: auto !important;
+      padding: 16px !important;
+      background-size: cover !important;
+      background-position: center !important;
+    }
+    
+    /* Force "Searching for" section to always be visible */
+    .cenCalBorder.hidden-xs.hidden-sm {
+      display: block !important;
+      visibility: visible !important;
+    }
+    
+    /* results/map: fill width and keep height reasonable on phones */
+    #map, .map, .iframe-container, .iframe-container iframe {
+      width: 100% !important;
+      height: 40vh !important;
+      max-width: 100% !important;
+    }
+    /* tables shouldn't blow out the layout */
+    table {
+      display: block !important;
+      width: 100% !important;
+      overflow-x: auto !important;
+      border-collapse: collapse !important;
+    }
+    /* images/icons scale down */
+    img { max-width: 100% !important; height: auto !important; }
+    
+    /* Below 1000px: use hamburger menu behavior */
+    @media (max-width: 999px) {
+      /* Force the navbar to collapse below 1000px */
+      .navbar-header {
+        float: none !important;
+      }
+      
+      .navbar-toggle {
+        display: block !important;
+        float: right !important;
+      }
+      
+      .navbar-collapse {
+        border-top: 1px solid transparent !important;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.1) !important;
+      }
+      
+      .navbar-collapse.collapse {
+        display: none !important;
+        max-height: none !important;
+      }
+      
+      .navbar-collapse.collapse.in {
+        display: block !important;
+        overflow-y: auto !important;
+      }
+      
+      .navbar-nav {
+        float: none !important;
+        margin: 7.5px -15px !important;
+      }
+      
+      .navbar-nav > li {
+        float: none !important;
+      }
+      
+      .navbar-nav > li > a {
+        padding-top: 10px !important;
+        padding-bottom: 10px !important;
+      }
+      
+      /* Stack columns */
+      [class*="col-"] {
+        float: none !important;
+        width: 100% !important;
+        max-width: 100% !important;
+      }
+      .row {
+        display: block !important;
+        margin-left: 0 !important;
+        margin-right: 0 !important;
+      }
+    }
+  `;
+  let style = document.getElementById('mobile-hotfix');
+  if (!style) {
+    style = document.createElement('style');
+    style.id = 'mobile-hotfix';
+    style.textContent = css;
+    document.head.appendChild(style);
+  } else {
+    style.textContent = css;
+  }
+  console.log('✅ Mobile overrides applied. Hamburger menu below 1000px.');
+})();

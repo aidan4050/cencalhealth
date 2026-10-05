@@ -2230,7 +2230,10 @@ window.PROVIDER_DATA = [{"type": "Individual", "npi": "1003117185", "name": "Bar
     const type = typeSel.value, spec = specSel.value, city = citySel.value, lang = langSel.value, acceptOnly = acceptingOnly.checked;
     let out = DATA.filter((r) => {
       if (type && r.type !== type) return false;
+      // Toggle ON: only providers accepting new patients.
+      // Toggle OFF: only providers NOT accepting new patients.
       if (acceptOnly && r.accepting === "Not Accepting") return false;
+      if (!acceptOnly && r.accepting !== "Not Accepting") return false;
       if (spec && !((r.specialties||[]).includes(spec) || (r.facilityTypes||[]).includes(spec))) return false;
       if (city && !(r.addresses||[]).some(a=>a.city===city)) return false;
       if (lang && !(r.languages||[]).includes(lang)) return false;

@@ -1,4 +1,5 @@
 
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -149,6 +150,15 @@ html,body{margin:0}
   #fad-app .card-grid{grid-template-columns:1fr;padding-left:0;gap:12px}
 }
 
+
+/* v54: merged multi-location providers */
+#fad-app .loc-toggle{display:inline-flex;align-items:center;gap:8px;margin-top:10px;padding:6px 12px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--brand-700);font-size:.84rem;font-weight:600;text-decoration:none}
+#fad-app .loc-toggle:hover{border-color:var(--brand-300);background:#F5FAFF}
+#fad-app .loc-chev{width:7px;height:7px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg) translateY(-2px);transition:transform .15s}
+#fad-app .loc-toggle[aria-expanded="true"] .loc-chev{transform:rotate(-135deg) translateY(-1px)}
+#fad-app .loc-accept{margin-top:2px;font-size:.8rem;font-weight:600}
+#fad-app .loc-accept.yes{color:#156F64}
+#fad-app .loc-accept.no{color:#9E310D}
 </style>
 </head>
 <body>
@@ -256,7 +266,46 @@ window.PROVIDER_DATA = [{"type": "Individual", "npi": "1003117185", "name": "Bar
 /* CenCal CareConnect Provider Search — OpenStreetMap / Leaflet */
 (function () {
   "use strict";
-  const DATA = (window.PROVIDER_DATA || []).slice();
+  const DATA = mergeDuplicateProviders(window.PROVIDER_DATA || []);
+
+  // v6: The source export lists some providers once per location (same name, often a
+  // different NPI per site). Merge records with the same provider type + name into one
+  // provider so each shows as a single card with a "more locations" dropdown.
+  // Accepting status is kept per location, since it can differ between sites.
+  function mergeDuplicateProviders(list) {
+    const groups = new Map(), out = [];
+    const uniq = (arr) => [...new Set(arr.filter(Boolean))];
+    list.forEach((r) => {
+      const key = (r.type || "") + "|" + (r.name || "").trim().toLowerCase().replace(/\s+/g, " ");
+      const addrs = (r.addresses || []).map((a) => Object.assign({}, a, { accepting: r.accepting, npi: r.npi }));
+      if (!groups.has(key)) {
+        const m = Object.assign({}, r, { addresses: addrs, npis: uniq([r.npi]) });
+        groups.set(key, m); out.push(m);
+      } else {
+        const m = groups.get(key);
+        const seen = new Set(m.addresses.map((a) => [a.address, a.city, a.zip].join("|").toLowerCase()));
+        addrs.forEach((a) => {
+          const k = [a.address, a.city, a.zip].join("|").toLowerCase();
+          if (!seen.has(k)) { seen.add(k); m.addresses.push(a); return; }
+          // Same address listed under another NPI: if either record is accepting, treat the location as accepting.
+          const ex = m.addresses.find((x) => [x.address, x.city, x.zip].join("|").toLowerCase() === k);
+          if (ex && a.accepting !== "Not Accepting") ex.accepting = a.accepting;
+        });
+        m.specialties = uniq([...(m.specialties || []), ...(r.specialties || [])]);
+        m.facilityTypes = uniq([...(m.facilityTypes || []), ...(r.facilityTypes || [])]);
+        m.languages = uniq([...(m.languages || []), ...(r.languages || [])]);
+        m.npis = uniq([...m.npis, r.npi]);
+      }
+    });
+    out.forEach((m, i) => {
+      m.id = i;
+      const acc = m.addresses.map((a) => a.accepting !== "Not Accepting");
+      m.anyAccepting = acc.some(Boolean);
+      m.anyNotAccepting = acc.some((x) => !x);
+      m.accepting = m.anyAccepting ? (m.anyNotAccepting ? "Mixed" : "Accepting") : "Not Accepting";
+    });
+    return out;
+  }
   const PER_PAGE = 20;
   const ICON = {
     pin: "https://wwwqa.cencalhealth.org/wp-content/uploads/2026/08/map-pin.png",
@@ -368,7 +417,7 @@ window.PROVIDER_DATA = [{"type": "Individual", "npi": "1003117185", "name": "Bar
   fillSelect(langSel, [...langSet].sort((a,b)=>a.localeCompare(b)));
 
   DATA.forEach((r) => {
-    r._search = [r.name, r.credential, r.type, (r.specialties||[]).join(" "), (r.facilityTypes||[]).join(" "), (r.languages||[]).join(" "), (r.addresses||[]).map(a=>a.city+" "+a.address+" "+a.zip).join(" ")].join(" ").toLowerCase();
+    r._search = [r.name, (r.npis||[]).join(" "), r.credential, r.type, (r.specialties||[]).join(" "), (r.facilityTypes||[]).join(" "), (r.languages||[]).join(" "), (r.addresses||[]).map(a=>a.city+" "+a.address+" "+a.zip).join(" ")].join(" ").toLowerCase();
     r._city = (r.addresses && r.addresses[0] && r.addresses[0].city) || "";
   });
 
@@ -379,8 +428,8 @@ window.PROVIDER_DATA = [{"type": "Individual", "npi": "1003117185", "name": "Bar
       if (type && r.type !== type) return false;
       // Toggle ON: only providers accepting new patients.
       // Toggle OFF: only providers NOT accepting new patients.
-      if (acceptOnly && r.accepting === "Not Accepting") return false;
-      if (!acceptOnly && r.accepting !== "Not Accepting") return false;
+      if (acceptOnly && !r.anyAccepting) return false;
+      if (!acceptOnly && !r.anyNotAccepting) return false;
       if (spec && !((r.specialties||[]).includes(spec) || (r.facilityTypes||[]).includes(spec))) return false;
       if (city && !(r.addresses||[]).some(a=>a.city===city)) return false;
       if (lang && !(r.languages||[]).includes(lang)) return false;
@@ -455,19 +504,21 @@ window.PROVIDER_DATA = [{"type": "Individual", "npi": "1003117185", "name": "Bar
     const loc = (a) => `<div class="loc-block">
         <div class="d-val">${esc(r.name)}<br>${esc(a.address)}<br>${esc(a.city)}, ${esc(a.state)} ${esc(a.zip)}</div>
         ${a.phone?`<div class="loc-phone"><a href="tel:${esc(a.phone)}">${esc(fmtPhone(a.phone))}</a></div>`:""}
+        ${r.accepting==="Mixed"?`<div class="loc-accept ${a.accepting==="Not Accepting"?"no":"yes"}">${a.accepting==="Not Accepting"?"Not accepting new patients here":"Accepting new patients here"}</div>`:""}
         <a class="map-dir" href="${mapLink(a)}" target="_blank" rel="noopener">Map Direction<span class="sr-only"> to ${esc(a.address)} (opens in new tab)</span></a>
       </div>`;
     const left = [
       item("Office phone", primary.phone?`<a href="tel:${esc(primary.phone)}">${esc(fmtPhone(primary.phone))}</a>`:"Not Available", I.phone),
       specText ? item(isFac?"Facility type":"Specialty", esc(specText), I.spec) : "",
       item("Languages", (r.languages&&r.languages.length)?esc(r.languages.join(", ")):"English", I.lang),
-      r.npi ? item("NPI", esc(r.npi), I.id) : ""
+      (r.npis&&r.npis.length) ? item(r.npis.length>1?"NPIs":"NPI", esc(r.npis.join(", ")), I.id) : ""
     ].join("");
     let locHtml = nLoc ? loc(primary) : "Not Available";
-    if (nLoc > 1) locHtml += `<button class="loc-toggle" type="button" aria-expanded="false">${nLoc-1} more location${nLoc-1>1?"s":""}</button><div class="loc-more" hidden>${addrs.slice(1).map(loc).join("")}</div>`;
+    const moreLbl = `Show ${nLoc-1} more location${nLoc-1>1?"s":""}`;
+    if (nLoc > 1) locHtml += `<button class="loc-toggle" type="button" aria-expanded="false"><span class="loc-toggle-text">${moreLbl}</span><span class="loc-chev" aria-hidden="true"></span></button><div class="loc-more" hidden>${addrs.slice(1).map(loc).join("")}</div>`;
     const right = [
-      item("Location", locHtml, I.pin),
-      item("Accepting new patients", statusYes?"Yes":"No", I.check)
+      item(nLoc>1?`Locations (${nLoc})`:"Location", locHtml, I.pin),
+      item("Accepting new patients", r.accepting==="Mixed"?"At some locations":(statusYes?"Yes":"No"), I.check)
     ].join("");
     li.innerHTML = `
       <div class="card-head">
@@ -476,7 +527,7 @@ window.PROVIDER_DATA = [{"type": "Individual", "npi": "1003117185", "name": "Bar
       </div>
       <div class="card-grid"><div class="col">${left}</div><div class="col">${right}</div></div>`;
     const toggle = li.querySelector(".loc-toggle");
-    if (toggle) toggle.addEventListener("click", (e)=>{ e.stopPropagation(); const more=li.querySelector(".loc-more"); const open=!more.hidden; more.hidden=open; toggle.setAttribute("aria-expanded",String(!open)); toggle.textContent = open ? `${nLoc-1} more location${nLoc-1>1?"s":""}` : "Show fewer locations"; });
+    if (toggle) toggle.addEventListener("click", (e)=>{ e.stopPropagation(); const more=li.querySelector(".loc-more"); const open=!more.hidden; more.hidden=open; toggle.setAttribute("aria-expanded",String(!open)); toggle.querySelector(".loc-toggle-text").textContent = open ? moreLbl : "Show fewer locations"; });
     li.addEventListener("click",(e)=>{ if(e.target.closest("a")||e.target.closest("button"))return; focusProvider(r,num,li,0); });
     return li;
   }

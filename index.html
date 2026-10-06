@@ -1,4 +1,5 @@
 
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1976,6 +1977,14 @@
   #fad-app .header-actions{display:none !important}
 }
 
+
+/* Mobile: keep map credit + Leaflet controls BELOW the filter sheet.
+   The map is put in its own stacking layer, and the search/filter section is
+   lifted above everything while the sheet is open. */
+@media (max-width:1024px){
+  #fad-app .map-pane{position:relative !important;z-index:0 !important;isolation:isolate}
+  body.mobile-filters-open #fad-app .controls{z-index:10000 !important}
+}
 </style>
 </head>
 <body>

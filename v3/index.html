@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -122,6 +123,14 @@
 #fad-app .loc-accept.no{color:#9E310D}
 #fad-app .status.mixed{background:#FBF5DC;color:#4A390A}
 #fad-app .loc-toggle.open .chev{transform:rotate(180deg)}
+
+/* v7: header matches the search/filter section background; dark text for the light bar */
+#fad-app .app-header{background:var(--surface);color:var(--gray-900);box-shadow:none;border-bottom:1px solid var(--line)}
+#fad-app .header-action-link,#fad-app .header-menu>summary{color:var(--gray-700)}
+#fad-app .header-action-link:hover,#fad-app .header-menu>summary:hover{background:var(--gray-100)}
+#fad-app .get-help-button{background:var(--brand-600)!important;color:#fff!important}
+#fad-app .get-help-button:hover{background:var(--brand-700)!important}
+#fad-app .app-header :focus-visible{outline:3px solid var(--focus);outline-offset:2px}
 </style>
 </head>
 <body>
@@ -129,7 +138,7 @@
 <header class="app-header">
   <div class="header-inner">
     <div class="brand">
-      <img class="logo-img" src="https://wwwqa.cencalhealth.org/wp-content/uploads/2026/08/CenCal_Logo2019_horiz_dkbkgd-RGB-6.png" alt="CenCal Health" />
+      <img class="logo-img" src="https://www.cencalhealth.org/wp-content/uploads/2024/01/cencal-Logo_Horizontal.png" alt="CenCal Health" />
     </div>
     <nav class="header-actions" aria-label="Provider directory navigation">
       <a class="header-action-link" href="https://provdir.cencalhealth.org/Home/">Home</a>

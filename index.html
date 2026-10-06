@@ -1985,6 +1985,12 @@
   #fad-app .map-pane{position:relative !important;z-index:0 !important;isolation:isolate}
   body.mobile-filters-open #fad-app .controls{z-index:10000 !important}
 }
+
+/* Merged multi-location providers */
+#fad-app .loc-accept{margin:4px 0 0 24px;font-size:.78rem;font-weight:600}
+#fad-app .loc-accept.yes{color:#156F64}
+#fad-app .loc-accept.no{color:#9E310D}
+#fad-app .status.mixed{background:#FBF5DC;color:#4A390A}
 </style>
 </head>
 <body>
@@ -2118,7 +2124,46 @@ window.PROVIDER_DATA = [{"type": "Individual", "npi": "1003117185", "name": "Bar
 /* CenCal CareConnect Provider Search — OpenStreetMap / Leaflet */
 (function () {
   "use strict";
-  const DATA = (window.PROVIDER_DATA || []).slice();
+  const DATA = mergeDuplicateProviders(window.PROVIDER_DATA || []);
+
+  // v6: The source export lists some providers once per location (same name, often a
+  // different NPI per site). Merge records with the same provider type + name into one
+  // provider so each shows as a single card with a "more locations" dropdown.
+  // Accepting status is kept per location, since it can differ between sites.
+  function mergeDuplicateProviders(list) {
+    const groups = new Map(), out = [];
+    const uniq = (arr) => [...new Set(arr.filter(Boolean))];
+    list.forEach((r) => {
+      const key = (r.type || "") + "|" + (r.name || "").trim().toLowerCase().replace(/\s+/g, " ");
+      const addrs = (r.addresses || []).map((a) => Object.assign({}, a, { accepting: r.accepting, npi: r.npi }));
+      if (!groups.has(key)) {
+        const m = Object.assign({}, r, { addresses: addrs, npis: uniq([r.npi]) });
+        groups.set(key, m); out.push(m);
+      } else {
+        const m = groups.get(key);
+        const seen = new Set(m.addresses.map((a) => [a.address, a.city, a.zip].join("|").toLowerCase()));
+        addrs.forEach((a) => {
+          const k = [a.address, a.city, a.zip].join("|").toLowerCase();
+          if (!seen.has(k)) { seen.add(k); m.addresses.push(a); return; }
+          // Same address listed under another NPI: if either record is accepting, treat the location as accepting.
+          const ex = m.addresses.find((x) => [x.address, x.city, x.zip].join("|").toLowerCase() === k);
+          if (ex && a.accepting !== "Not Accepting") ex.accepting = a.accepting;
+        });
+        m.specialties = uniq([...(m.specialties || []), ...(r.specialties || [])]);
+        m.facilityTypes = uniq([...(m.facilityTypes || []), ...(r.facilityTypes || [])]);
+        m.languages = uniq([...(m.languages || []), ...(r.languages || [])]);
+        m.npis = uniq([...m.npis, r.npi]);
+      }
+    });
+    out.forEach((m, i) => {
+      m.id = i;
+      const acc = m.addresses.map((a) => a.accepting !== "Not Accepting");
+      m.anyAccepting = acc.some(Boolean);
+      m.anyNotAccepting = acc.some((x) => !x);
+      m.accepting = m.anyAccepting ? (m.anyNotAccepting ? "Mixed" : "Accepting") : "Not Accepting";
+    });
+    return out;
+  }
   const PER_PAGE = 20;
   const ICON = {
     pin: "https://wwwqa.cencalhealth.org/wp-content/uploads/2026/08/map-pin.png",
@@ -2230,7 +2275,7 @@ window.PROVIDER_DATA = [{"type": "Individual", "npi": "1003117185", "name": "Bar
   fillSelect(langSel, [...langSet].sort((a,b)=>a.localeCompare(b)));
 
   DATA.forEach((r) => {
-    r._search = [r.name, r.credential, r.type, (r.specialties||[]).join(" "), (r.facilityTypes||[]).join(" "), (r.languages||[]).join(" "), (r.addresses||[]).map(a=>a.city+" "+a.address+" "+a.zip).join(" ")].join(" ").toLowerCase();
+    r._search = [r.name, (r.npis||[]).join(" "), r.credential, r.type, (r.specialties||[]).join(" "), (r.facilityTypes||[]).join(" "), (r.languages||[]).join(" "), (r.addresses||[]).map(a=>a.city+" "+a.address+" "+a.zip).join(" ")].join(" ").toLowerCase();
     r._city = (r.addresses && r.addresses[0] && r.addresses[0].city) || "";
   });
 
@@ -2241,8 +2286,8 @@ window.PROVIDER_DATA = [{"type": "Individual", "npi": "1003117185", "name": "Bar
       if (type && r.type !== type) return false;
       // Toggle ON: only providers accepting new patients.
       // Toggle OFF: only providers NOT accepting new patients.
-      if (acceptOnly && r.accepting === "Not Accepting") return false;
-      if (!acceptOnly && r.accepting !== "Not Accepting") return false;
+      if (acceptOnly && !r.anyAccepting) return false;
+      if (!acceptOnly && !r.anyNotAccepting) return false;
       if (spec && !((r.specialties||[]).includes(spec) || (r.facilityTypes||[]).includes(spec))) return false;
       if (city && !(r.addresses||[]).some(a=>a.city===city)) return false;
       if (lang && !(r.languages||[]).includes(lang)) return false;
@@ -2304,19 +2349,20 @@ window.PROVIDER_DATA = [{"type": "Individual", "npi": "1003117185", "name": "Bar
       <div class="loc" data-idx="${idx}">
         <div class="loc-addr"><img class="ico" src="${ICON.pin}" alt="" aria-hidden="true"/> <span>${esc(a.address)}${a.address?", ":""}${esc(a.city)}, ${esc(a.state)} ${esc(a.zip)}</span></div>
         ${a.phone?`<div class="loc-phone"><img class="ico" src="${ICON.phone}" alt="" aria-hidden="true"/> <a href="tel:${esc(a.phone)}">${esc(fmtPhone(a.phone))}</a></div>`:""}
+        ${r.accepting==="Mixed"?`<div class="loc-accept ${a.accepting==="Not Accepting"?"no":"yes"}">${a.accepting==="Not Accepting"?"Not accepting new patients here":"Accepting new patients here"}</div>`:""}
       </div>`;
     let locHtml;
     if (nLoc <= 1) locHtml = primary ? locRow(primary, 0) : "";
-    else locHtml = `${locRow(primary,0)}<button class="loc-toggle" type="button" aria-expanded="false"><img class="chev" src="${ICON.chevron}" alt="" aria-hidden="true"/> ${nLoc-1} more location${nLoc-1>1?"s":""}</button><div class="loc-more" hidden>${addrs.slice(1).map((a,i)=>locRow(a,i+1)).join("")}</div>`;
+    else locHtml = `${locRow(primary,0)}<button class="loc-toggle" type="button" aria-expanded="false"><img class="chev" src="${ICON.chevron}" alt="" aria-hidden="true"/> <span class="loc-toggle-text">Show ${nLoc-1} more location${nLoc-1>1?"s":""}</span></button><div class="loc-more" hidden>${addrs.slice(1).map((a,i)=>locRow(a,i+1)).join("")}</div>`;
     li.innerHTML = `
       <div class="card-top"><h3>${esc(r.name)}</h3><span class="pill ${r.type==="Facility"?"fac":"ind"}">${r.type==="Facility"?"Facility":"Doctor"}</span></div>
       ${specText?`<div class="spec">${esc(specText)}</div>`:""}
-      ${r.npi?`<div class="npi"><span class="npi-label">NPI:</span> ${esc(r.npi)}</div>`:""}
+      ${(r.npis&&r.npis.length)?`<div class="npi"><span class="npi-label">${r.npis.length>1?"NPIs":"NPI"}:</span> ${esc(r.npis.join(", "))}</div>`:""}
       ${nLoc>1?`<div class="loc-count">${nLoc} locations</div>`:""}
       <div class="meta">${locHtml}</div>
-      <div class="badges"><span class="status ${statusYes?"yes":"no"}">${statusYes?"✓ Accepting new patients":"Not accepting"}</span>${langBadges}</div>`;
+      <div class="badges"><span class="status ${r.accepting==="Mixed"?"mixed":(statusYes?"yes":"no")}">${r.accepting==="Mixed"?"Accepting at some locations":(statusYes?"✓ Accepting new patients":"Not accepting")}</span>${langBadges}</div>`;
     const toggle = li.querySelector(".loc-toggle");
-    if (toggle) toggle.addEventListener("click", (e)=>{ e.stopPropagation(); const more=li.querySelector(".loc-more"); const open=!more.hidden; more.hidden=open; toggle.setAttribute("aria-expanded",String(!open)); });
+    if (toggle) toggle.addEventListener("click", (e)=>{ e.stopPropagation(); const more=li.querySelector(".loc-more"); const open=!more.hidden; more.hidden=open; toggle.setAttribute("aria-expanded",String(!open)); toggle.querySelector(".loc-toggle-text").textContent = open ? `Show ${nLoc-1} more location${nLoc-1>1?"s":""}` : "Show fewer locations"; });
     li.addEventListener("click",(e)=>{ if(e.target.closest("a")||e.target.closest("button"))return; focusProvider(r,num,li,0); });
     return li;
   }
